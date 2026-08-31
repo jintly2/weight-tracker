@@ -9,7 +9,14 @@
 <body>
 <div class="wrap">
   <div class="card">
-    <div class="card-title">📋 历史记录</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="card-title" style="margin:0">📋 历史记录</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-ghost" onclick="doExport()">⬇️ 导出</button>
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('importFile').click()">⬆️ 导入</button>
+        <input type="file" id="importFile" accept=".csv" style="display:none" onchange="doImport(this)">
+      </div>
+    </div>
     <div id="historyList"></div>
   </div>
 </div>
@@ -29,6 +36,17 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeEditModal()">取消</button>
       <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入结果模态框 -->
+<div class="modal-mask" id="importModal" style="display:none">
+  <div class="modal">
+    <h3>导入结果</h3>
+    <div id="importResult" style="font-size:14px;line-height:1.8"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeImportModal()">确定</button>
     </div>
   </div>
 </div>
@@ -121,6 +139,58 @@ async function delRecord(id){
     loadRecords();
   }catch(e){ showToast(e.message); }
 }
+
+// 导出 CSV
+async function doExport(){
+  try{
+    showToast('正在导出...');
+    const token = localStorage.getItem('wt_token');
+    const resp = await fetch('/api/weights/export', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!resp.ok) throw new Error('导出失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `体重记录_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('导出成功');
+  }catch(e){ showToast(e.message); }
+}
+
+// 导入 CSV
+async function doImport(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(!file.name.toLowerCase().endsWith('.csv')){
+    showToast('请选择 CSV 文件'); input.value=''; return;
+  }
+  try{
+    showToast('正在导入...');
+    const text = await file.text();
+    const result = await api('/weights/import', {
+      method:'POST',
+      body: JSON.stringify({ csv: text })
+    });
+    let html = `<div style="margin-bottom:8px">✅ 导入完成</div>`;
+    html += `<div>新增记录：<b style="color:var(--primary-dark)">${result.imported}</b> 条</div>`;
+    html += `<div>更新已有：<b style="color:var(--accent)">${result.updated}</b> 条</div>`;
+    html += `<div>跳过/无效：<b style="color:var(--text3)">${result.skipped}</b> 条</div>`;
+    if(result.errors && result.errors.length){
+      html += `<div style="margin-top:8px;font-size:12px;color:var(--danger)">⚠️ 部分行未导入：<br>${result.errors.join('<br>')}</div>`;
+    }
+    html += `<div style="margin-top:10px;font-size:12px;color:var(--text3)">CSV格式：日期,时段,体重(kg),备注<br>时段填"早"或"晚"，日期支持 2024-01-01 或 2024/01/01</div>`;
+    document.getElementById('importResult').innerHTML = html;
+    document.getElementById('importModal').style.display = 'flex';
+    loadRecords();
+  }catch(e){ showToast(e.message); }
+  input.value = '';
+}
+function closeImportModal(){ document.getElementById('importModal').style.display = 'none'; }
 
 loadRecords();
 </script>

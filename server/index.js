@@ -166,6 +166,117 @@ app.delete('/api/weights/:id', auth, async (req, res) => {
   }
 });
 
+// 导出所有记录为 CSV
+app.get('/api/weights/export', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT TO_CHAR(record_date, \'YYYY-MM-DD\') as record_date, period, weight, note FROM weight_records WHERE user_id=$1 ORDER BY record_date, period',
+      [req.user.id]
+    );
+    const rows = [['日期', '时段', '体重(kg)', '备注']];
+    r.rows.forEach(row => {
+      rows.push([
+        row.record_date,
+        row.period === 'morning' ? '早' : '晚',
+        row.weight,
+        (row.note || '').replace(/"/g, '""')
+      ]);
+    });
+    const csv = '\uFEFF' + rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="weight_records_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: '导出失败' });
+  }
+});
+
+// 从 CSV 导入记录
+app.post('/api/weights/import', auth, async (req, res) => {
+  const { csv } = req.body;
+  if (!csv || typeof csv !== 'string') return res.status(400).json({ error: '缺少CSV数据' });
+  try {
+    const lines = csv.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return res.status(400).json({ error: 'CSV内容为空或只有表头' });
+    // 检测表头行（第一行如果包含"日期"或"date"则跳过）
+    let startIdx = 0;
+    const first = lines[0].toLowerCase();
+    if (first.includes('日期') || first.includes('date') || first.includes('体重') || first.includes('weight')) {
+      startIdx = 1;
+    }
+    let imported = 0, updated = 0, skipped = 0, errors = [];
+    for (let i = startIdx; i < lines.length; i++) {
+      const parts = parseCSVLine(lines[i]);
+      if (parts.length < 3) { skipped++; continue; }
+      let [date, period, weight, note] = parts;
+      date = date.trim().replace(/\//g, '-');
+      // 验证日期
+      if (!/^\d{4}-\d{1,2}-\d{1,2}$/.test(date)) {
+        errors.push(`第${i+1}行: 日期格式错误 "${date}"`);
+        skipped++;
+        continue;
+      }
+      // 规范化日期
+      const d = new Date(date);
+      if (isNaN(d.getTime())) { errors.push(`第${i+1}行: 无效日期 "${date}"`); skipped++; continue; }
+      date = d.toISOString().slice(0, 10);
+      // 时段
+      period = period.trim().toLowerCase();
+      if (['早', 'morning', 'am', 'm', '早上', '早晨'].includes(period)) period = 'morning';
+      else if (['晚', 'evening', 'pm', 'e', '晚上', '傍晚', '夜'].includes(period)) period = 'evening';
+      else { period = 'morning'; } // 默认早间
+      // 体重
+      weight = parseFloat(weight);
+      if (isNaN(weight) || weight <= 0 || weight > 500) {
+        errors.push(`第${i+1}行: 体重无效 "${parts[2]}"`);
+        skipped++;
+        continue;
+      }
+      note = (note || '').trim() || null;
+      // UPSERT
+      const exist = await pool.query(
+        'SELECT id FROM weight_records WHERE user_id=$1 AND record_date=$2 AND period=$3',
+        [req.user.id, date, period]
+      );
+      if (exist.rows.length) {
+        await pool.query(
+          'UPDATE weight_records SET weight=$1, note=$2 WHERE id=$3',
+          [weight, note, exist.rows[0].id]
+        );
+        updated++;
+      } else {
+        await pool.query(
+          'INSERT INTO weight_records (user_id, record_date, period, weight, note) VALUES ($1,$2,$3,$4,$5)',
+          [req.user.id, date, period, weight, note]
+        );
+        imported++;
+      }
+    }
+    res.json({ imported, updated, skipped, total: imported + updated, errors: errors.slice(0, 10) });
+  } catch (e) {
+    res.status(500).json({ error: '导入失败: ' + e.message });
+  }
+});
+
+// 解析单行CSV（处理引号内的逗号）
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i+1] === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === ',' && !inQuote) {
+      result.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
 // 月度汇总统计
 app.get('/api/stats/summary', auth, async (req, res) => {
   const { month } = req.query;
