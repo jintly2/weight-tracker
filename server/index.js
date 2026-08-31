@@ -109,7 +109,7 @@ app.get('/api/weights', auth, async (req, res) => {
   if (!month) return res.status(400).json({ error: '缺少月份参数' });
   try {
     const r = await pool.query(
-      `SELECT id, record_date, period, weight, note, created_at
+      `SELECT id, TO_CHAR(record_date, 'YYYY-MM-DD') as record_date, period, weight, note, created_at
        FROM weight_records WHERE user_id=$1 AND to_char(record_date,'YYYY-MM')=$2
        ORDER BY record_date, period`,
       [req.user.id, month]
@@ -125,7 +125,7 @@ app.get('/api/weights/range', auth, async (req, res) => {
   const { start, end } = req.query;
   try {
     const r = await pool.query(
-      `SELECT id, record_date, period, weight, note FROM weight_records
+      `SELECT id, TO_CHAR(record_date, 'YYYY-MM-DD') as record_date, period, weight, note FROM weight_records
        WHERE user_id=$1 AND record_date>=$2 AND record_date<=$3 ORDER BY record_date, period`,
       [req.user.id, start, end]
     );
@@ -146,7 +146,7 @@ app.post('/api/weights', auth, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (user_id, record_date, period)
        DO UPDATE SET weight=EXCLUDED.weight, note=EXCLUDED.note
-       RETURNING id, record_date, period, weight, note`,
+       RETURNING id, TO_CHAR(record_date, 'YYYY-MM-DD') as record_date, period, weight, note`,
       [req.user.id, record_date, period, weight, note]
     );
     res.json(r.rows[0]);
