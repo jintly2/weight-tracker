@@ -80,15 +80,19 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'PingFang 
 .cal-nav button{width:32px;height:32px;border:1px solid var(--border);background:var(--bg);border-radius:8px;cursor:pointer;font-size:16px;color:var(--text2)}
 .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:11px;color:var(--text3);margin-bottom:6px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:11px;position:relative;cursor:pointer;transition:.15s}
+.cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:11px;position:relative;cursor:pointer;transition:.15s;gap:1px}
 .cal-cell:hover{background:var(--primary-light)}
 .cal-cell.other{color:var(--text3);opacity:.4}
 .cal-cell.today{border:2px solid var(--primary)}
 .cal-cell.has-record{background:var(--primary-light);font-weight:700;color:var(--primary-dark)}
-.cal-cell .day{font-size:12px;font-weight:600}
-.cal-cell .w{font-size:9px;color:var(--primary-dark);margin-top:1px}
+.cal-cell .day{font-size:11px;font-weight:600;line-height:1}
+.cal-cell .w{font-size:11px;color:var(--primary-dark);font-weight:800;line-height:1}
+.cal-cell .diff{font-size:8px;font-weight:700;line-height:1}
+.cal-cell .diff.up{color:#ef4444}
+.cal-cell .diff.down{color:#22c55e}
 .cal-cell.selected{background:var(--primary);color:#fff}
 .cal-cell.selected .w{color:#fff}
+.cal-cell.selected .diff.up,.cal-cell.selected .diff.down{color:#fff}
 
 /* 打卡区 */
 .record-day{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text2)}

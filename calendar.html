@@ -98,6 +98,18 @@ function renderCalendar(){
   const today = fmtDate(new Date());
   const recordMap = {};
   monthRecords.forEach(r=>{ recordMap[r.record_date] = recordMap[r.record_date]||{}; recordMap[r.record_date][r.period]=r.weight; });
+  // 构建每日体重（早间优先）和日增减映射
+  const dayWeight = {};
+  Object.keys(recordMap).forEach(d=>{
+    const rec = recordMap[d];
+    dayWeight[d] = parseFloat(rec.morning || rec.evening);
+  });
+  const sortedDays = Object.keys(dayWeight).sort();
+  const dayDiff = {}; // 日期 -> 与前一个有记录日的差值
+  for(let i=0;i<sortedDays.length;i++){
+    if(i===0) dayDiff[sortedDays[i]] = null;
+    else dayDiff[sortedDays[i]] = dayWeight[sortedDays[i]] - dayWeight[sortedDays[i-1]];
+  }
 
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
@@ -126,8 +138,15 @@ function renderCalendar(){
     const rec = recordMap[dateStr];
     if(rec && !isOther){
       cell.classList.add('has-record');
-      const w = rec.morning || rec.evening;
-      cell.innerHTML = `<div class="day">${dayNum}</div><div class="w">${fmtWeightNum(parseFloat(w))}</div>`;
+      const w = parseFloat(rec.morning || rec.evening);
+      const diff = dayDiff[dateStr];
+      let diffHtml = '';
+      if(diff !== null && diff !== undefined && Math.abs(diff) >= 0.05){
+        const cls = diff > 0 ? 'up' : 'down';
+        const arrow = diff > 0 ? '↑' : '↓';
+        diffHtml = `<div class="diff ${cls}">${arrow}${fmtWeightNum(Math.abs(diff))}</div>`;
+      }
+      cell.innerHTML = `<div class="day">${dayNum}</div><div class="w">${fmtWeightNum(w)}</div>${diffHtml}`;
     }else{
       cell.innerHTML = `<div class="day">${dayNum}</div>`;
     }
@@ -194,9 +213,11 @@ async function loadSummary(){
 
 // ===== 加载月份数据 =====
 async function loadMonth(){
-  const month = `${curDate.getFullYear()}-${String(curDate.getMonth()+1).padStart(2,'0')}`;
+  const y = curDate.getFullYear(), m = curDate.getMonth();
+  const start = new Date(y, m, -6); // 上月25号左右，用于计算首日增减
+  const end = new Date(y, m+1, 0);
   try{
-    monthRecords = await api(`/weights?month=${month}`);
+    monthRecords = await api(`/weights/range?start=${fmtDate(start)}&end=${fmtDate(end)}`);
   }catch(e){ monthRecords = []; }
   renderCalendar();
   renderDayRecords();
