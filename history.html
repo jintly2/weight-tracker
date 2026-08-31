@@ -144,12 +144,23 @@ async function delRecord(id){
 async function doExport(){
   try{
     showToast('正在导出...');
-    const token = localStorage.getItem('wt_token');
-    const resp = await fetch('/api/weights/export', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    if(!resp.ok) throw new Error('导出失败');
-    const blob = await resp.blob();
+    let csvText;
+    if(isGuest()){
+      const records = await api('/weights/export');
+      const rows = [['日期','时段','体重(kg)','备注']];
+      records.forEach(r=>{
+        rows.push([r.record_date, r.period==='morning'?'早':'晚', r.weight, (r.note||'').replace(/"/g,'""')]);
+      });
+      csvText = '\uFEFF' + rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+    }else{
+      const token = localStorage.getItem('wt_token');
+      const resp = await fetch('/api/weights/export', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if(!resp.ok) throw new Error('导出失败');
+      csvText = await resp.text();
+    }
+    const blob = new Blob([csvText], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

@@ -28,12 +28,21 @@
       <p class="auth-error" id="authError"></p>
       <button type="submit" class="btn btn-primary btn-block" id="authBtn">登录</button>
     </form>
+    <div class="auth-divider"><span>或</span></div>
+    <button class="btn btn-ghost btn-block" onclick="doGuest()">👤 游客进入（数据存本地）</button>
   </div>
 </div>
 <script src="js/common.js"></script>
 <script>
-// 已登录直接跳转
-if(getToken()){ location.href='calendar.html'; }
+// 已登录或游客模式直接跳转
+if(getToken() || isGuest()){ location.href='calendar.html'; }
+
+function doGuest(){
+  setGuest();
+  setUser({id:0,username:'guest',nickname:'游客'});
+  showToast('已进入游客模式');
+  setTimeout(()=>location.href='calendar.html', 300);
+}
 
 let mode = 'login';
 document.querySelectorAll('.auth-tab').forEach(tab=>{

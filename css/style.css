@@ -72,6 +72,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'PingFang 
 .auth-tab{flex:1;padding:9px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
 .auth-tab.active{background:linear-gradient(135deg,var(--primary),var(--primary-dark));border-color:transparent;color:#fff}
 .auth-error{color:var(--up);font-size:12px;min-height:18px;text-align:center;margin:6px 0}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--text3);font-size:12px}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
 /* 日历 */
 .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
