@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>体重记录 · 我的</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <!-- 用户信息 -->
+  <div class="card">
+    <div class="profile-header">
+      <div class="profile-avatar">⚖️</div>
+      <div class="profile-name" id="profName">--</div>
+      <div class="profile-id" id="profId">ID: --</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px" id="profSig">轻松记录体重，遇见更好的自己</div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="v" id="stDays">--</div><div class="k">打卡天数</div></div>
+      <div class="stat-box"><div class="v" id="stBMI">--</div><div class="k">BMI</div></div>
+      <div class="stat-box"><div class="v" id="stFat">--</div><div class="k">体脂率%</div></div>
+      <div class="stat-box"><div class="v" id="stInit">--</div><div class="k">初始体重</div></div>
+      <div class="stat-box"><div class="v" id="stTarget">--</div><div class="k">目标体重</div></div>
+      <div class="stat-box"><div class="v" id="stToTarget">--</div><div class="k">距目标</div></div>
+    </div>
+    <div id="bmiCategory" style="text-align:center;margin-top:10px;font-size:12px"></div>
+  </div>
+
+  <!-- 个人资料 -->
+  <div class="card">
+    <div class="card-title">✏️ 个人资料</div>
+    <div class="form-group">
+      <label>昵称</label>
+      <input type="text" id="fNickname" placeholder="请输入昵称">
+    </div>
+    <div class="form-group">
+      <label>个性签名</label>
+      <input type="text" id="fSignature" placeholder="一句话介绍自己">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>性别</label>
+        <select id="fGender">
+          <option value="male">男</option>
+          <option value="female">女</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>年龄</label>
+        <input type="number" id="fAge" placeholder="岁">
+      </div>
+      <div class="form-group">
+        <label>身高(cm)</label>
+        <input type="number" id="fHeight" step="0.1" placeholder="cm">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>初始体重</label>
+        <input type="number" id="fInit" step="0.1" placeholder="kg">
+      </div>
+      <div class="form-group">
+        <label>目标体重</label>
+        <input type="number" id="fTarget" step="0.1" placeholder="kg">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveProfile()">保存资料</button>
+  </div>
+
+  <!-- 偏好设置 -->
+  <div class="card">
+    <div class="card-title">⚙️ 偏好设置</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0">
+      <span style="font-size:14px">体重单位</span>
+      <div class="unit-toggle" id="unitToggle">
+        <button data-u="kg" class="active">kg</button>
+        <button data-u="jin">斤</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:16px;text-align:center">
+    <button class="btn btn-danger" onclick="doLogout()">退出登录</button>
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+if(!requireAuth()) throw new Error('need auth');
+renderTopbar('我的');
+renderTabbar('profile');
+
+let me = null;
+let currentWeight = null;
+
+async function loadProfile(){
+  try{
+    me = await api('/auth/me');
+    document.getElementById('profName').textContent = me.nickname || me.username;
+    document.getElementById('profId').textContent = 'ID: ' + me.id;
+    document.getElementById('profSig').textContent = me.signature || '轻松记录体重，遇见更好的自己';
+    document.getElementById('fNickname').value = me.nickname || '';
+    document.getElementById('fSignature').value = me.signature || '';
+    document.getElementById('fGender').value = me.gender || 'male';
+    document.getElementById('fAge').value = me.age || '';
+    document.getElementById('fHeight').value = me.height || '';
+    document.getElementById('fInit').value = me.initial_weight || '';
+    document.getElementById('fTarget').value = me.target_weight || '';
+    document.getElementById('stInit').textContent = me.initial_weight ? fmtWeight(parseFloat(me.initial_weight)) : '--';
+    document.getElementById('stTarget').textContent = me.target_weight ? fmtWeight(parseFloat(me.target_weight)) : '--';
+  }catch(e){ showToast(e.message); }
+}
+
+async function loadStats(){
+  // 打卡天数
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  try{
+    const s = await api(`/stats/summary?month=${month}`);
+    document.getElementById('stDays').textContent = s.days;
+  }catch(e){}
+  // 当前体重（最近一条记录）
+  const end = new Date();
+  const start = new Date(); start.setDate(start.getDate()-90);
+  try{
+    const records = await api(`/weights/range?start=${fmtDate(start)}&end=${fmtDate(end)}`);
+    if(records.length){
+      records.sort((a,b)=>{
+        if(a.record_date!==b.record_date) return b.record_date.localeCompare(a.record_date);
+        return a.period==='evening'?1:-1;
+      });
+      currentWeight = parseFloat(records[0].weight);
+    }
+  }catch(e){}
+  // BMI + 体脂率
+  if(currentWeight && me && me.height){
+    const bmi = calcBMI(currentWeight, parseFloat(me.height));
+    const cat = bmiCategory(bmi);
+    document.getElementById('stBMI').textContent = bmi.toFixed(1);
+    document.getElementById('stBMI').style.color = cat.color;
+    document.getElementById('bmiCategory').innerHTML = `BMI分类：<span style="color:${cat.color};font-weight:700">${cat.text}</span>`;
+    if(me.age){
+      const fat = calcBodyFat(bmi, parseInt(me.age), me.gender);
+      document.getElementById('stFat').textContent = fat.toFixed(1);
+    }else{
+      document.getElementById('stFat').textContent = '--';
+    }
+    // 距目标
+    if(me.target_weight){
+      const diff = currentWeight - parseFloat(me.target_weight);
+      document.getElementById('stToTarget').textContent = (diff>0?'+':'') + fmtWeightNum(Math.abs(diff)) + (diff>0?'需减':'已达');
+      document.getElementById('stToTarget').className = 'v ' + (diff>0?'up':'down');
+    }else document.getElementById('stToTarget').textContent = '--';
+  }else{
+    document.getElementById('stBMI').textContent = '--';
+    document.getElementById('stFat').textContent = '--';
+    document.getElementById('stToTarget').textContent = '--';
+    document.getElementById('bmiCategory').textContent = '填写身高并记录体重后可计算BMI和体脂率';
+  }
+}
+
+async function saveProfile(){
+  const data = {
+    nickname: document.getElementById('fNickname').value.trim() || null,
+    signature: document.getElementById('fSignature').value.trim() || null,
+    gender: document.getElementById('fGender').value,
+    age: document.getElementById('fAge').value ? parseInt(document.getElementById('fAge').value) : null,
+    height: document.getElementById('fHeight').value ? parseFloat(document.getElementById('fHeight').value) : null,
+    initial_weight: document.getElementById('fInit').value ? parseFloat(document.getElementById('fInit').value) : null,
+    target_weight: document.getElementById('fTarget').value ? parseFloat(document.getElementById('fTarget').value) : null,
+  };
+  try{
+    const updated = await api('/auth/profile',{method:'PUT',body:JSON.stringify(data)});
+    setUser(updated);
+    showToast('保存成功');
+    loadProfile();
+    loadStats();
+  }catch(e){ showToast(e.message); }
+}
+
+// 单位切换
+document.getElementById('unitToggle').querySelectorAll('button').forEach(btn=>{
+  btn.onclick = ()=>{
+    document.getElementById('unitToggle').querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    setUnit(btn.dataset.u);
+    showToast('单位已切换为' + (btn.dataset.u==='jin'?'斤':'kg'));
+    loadStats();
+  };
+});
+// 初始化单位按钮
+(function(){
+  const u = getUnit();
+  document.getElementById('unitToggle').querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.u===u);
+  });
+})();
+
+loadProfile().then(loadStats);
+</script>
+</body>
+</html>

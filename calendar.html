@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>体重记录 · 日历</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <!-- 日历卡片 -->
+  <div class="card">
+    <div class="cal-header">
+      <div class="month" id="calMonth">2026年08月</div>
+      <div class="cal-nav">
+        <button id="prevMonth">‹</button>
+        <button id="todayBtn">今</button>
+        <button id="nextMonth">›</button>
+      </div>
+    </div>
+    <div class="cal-weekdays">
+      <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <!-- 当日打卡 -->
+  <div class="card">
+    <div class="card-title">📝 <span id="recordDayTitle">今日打卡</span></div>
+    <div class="record-slots">
+      <div class="record-slot" id="slotMorning" onclick="openRecordModal('morning')">
+        <div class="label">🌅 早</div>
+        <div class="val empty" id="morningVal">未记录</div>
+        <div class="edit">点击记录</div>
+      </div>
+      <div class="record-slot" id="slotEvening" onclick="openRecordModal('evening')">
+        <div class="label">🌙 晚</div>
+        <div class="val empty" id="eveningVal">未记录</div>
+        <div class="edit">点击记录</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 当月汇总 -->
+  <div class="card">
+    <div class="card-title">📊 当月汇总</div>
+    <div class="stats-grid" id="summaryGrid">
+      <div class="stat-box"><div class="v" id="sumDays">--</div><div class="k">打卡天数</div></div>
+      <div class="stat-box"><div class="v" id="sumAvg">--</div><div class="k">平均体重</div></div>
+      <div class="stat-box"><div class="v" id="sumChange">--</div><div class="k">月内变化</div></div>
+      <div class="stat-box"><div class="v" id="sumMin">--</div><div class="k">最低</div></div>
+      <div class="stat-box"><div class="v" id="sumMax">--</div><div class="k">最高</div></div>
+      <div class="stat-box"><div class="v" id="sumRecords">--</div><div class="k">记录条数</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 记录模态框 -->
+<div class="modal-mask" id="recordModal" style="display:none">
+  <div class="modal">
+    <h3 id="modalTitle">记录体重</h3>
+    <div class="form-group">
+      <label>体重（<span id="modalUnit">kg</span>）</label>
+      <input type="number" id="modalWeight" step="0.1" placeholder="请输入体重" required>
+    </div>
+    <div class="form-group">
+      <label>备注（可选）</label>
+      <input type="text" id="modalNote" placeholder="比如：空腹、运动后">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeRecordModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveRecord()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+if(!requireAuth()) throw new Error('need auth');
+
+let curDate = new Date();
+let selectedDate = fmtDate(new Date());
+let monthRecords = [];
+let modalPeriod = 'morning';
+
+renderTopbar('体重日历');
+renderTabbar('calendar');
+
+// ===== 日历渲染 =====
+function renderCalendar(){
+  const y = curDate.getFullYear(), m = curDate.getMonth();
+  document.getElementById('calMonth').textContent = `${y}年${String(m+1).padStart(2,'0')}月`;
+  const firstDay = new Date(y, m, 1);
+  const lastDay = new Date(y, m+1, 0);
+  const startWeekday = (firstDay.getDay()+6)%7; // 周一为0
+  const daysInMonth = lastDay.getDate();
+  const prevMonthDays = new Date(y, m, 0).getDate();
+  const today = fmtDate(new Date());
+  const recordMap = {};
+  monthRecords.forEach(r=>{ recordMap[r.record_date] = recordMap[r.record_date]||{}; recordMap[r.record_date][r.period]=r.weight; });
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  const totalCells = Math.ceil((startWeekday + daysInMonth)/7)*7;
+  for(let i=0;i<totalCells;i++){
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell';
+    let dayNum, dateStr, isOther=false;
+    if(i < startWeekday){
+      dayNum = prevMonthDays - startWeekday + i + 1;
+      const pm = m===0?12:m, py = m===0?y-1:y;
+      dateStr = `${py}-${String(pm).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+      isOther = true;
+    }else if(i >= startWeekday + daysInMonth){
+      dayNum = i - startWeekday - daysInMonth + 1;
+      const nm = m===11?1:m+2, ny = m===11?y+1:y;
+      dateStr = `${ny}-${String(nm).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+      isOther = true;
+    }else{
+      dayNum = i - startWeekday + 1;
+      dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+    }
+    if(isOther) cell.classList.add('other');
+    if(dateStr === today) cell.classList.add('today');
+    if(dateStr === selectedDate) cell.classList.add('selected');
+    const rec = recordMap[dateStr];
+    if(rec && !isOther){
+      cell.classList.add('has-record');
+      const w = rec.morning || rec.evening;
+      cell.innerHTML = `<div class="day">${dayNum}</div><div class="w">${fmtWeightNum(parseFloat(w))}</div>`;
+    }else{
+      cell.innerHTML = `<div class="day">${dayNum}</div>`;
+    }
+    cell.onclick = ()=>{ selectedDate = dateStr; if(isOther){ curDate = new Date(dateStr); loadMonth(); } else { renderCalendar(); renderDayRecords(); } };
+    grid.appendChild(cell);
+  }
+}
+
+// ===== 当日记录 =====
+function renderDayRecords(){
+  const d = new Date(selectedDate);
+  const today = fmtDate(new Date());
+  document.getElementById('recordDayTitle').textContent = selectedDate===today ? '今日打卡' : `${d.getMonth()+1}月${d.getDate()}日 打卡`;
+  const mRec = monthRecords.find(r=>r.record_date===selectedDate && r.period==='morning');
+  const eRec = monthRecords.find(r=>r.record_date===selectedDate && r.period==='evening');
+  const mEl = document.getElementById('morningVal'), eEl = document.getElementById('eveningVal');
+  if(mRec){ mEl.textContent = fmtWeight(parseFloat(mRec.weight)); mEl.classList.remove('empty'); }
+  else { mEl.textContent = '未记录'; mEl.classList.add('empty'); }
+  if(eRec){ eEl.textContent = fmtWeight(parseFloat(eRec.weight)); eEl.classList.remove('empty'); }
+  else { eEl.textContent = '未记录'; eEl.classList.add('empty'); }
+}
+
+// ===== 模态框 =====
+function openRecordModal(period){
+  modalPeriod = period;
+  document.getElementById('modalTitle').textContent = `记录${periodLabel(period)}间体重`;
+  document.getElementById('modalUnit').textContent = getUnit()==='jin'?'斤':'kg';
+  const rec = monthRecords.find(r=>r.record_date===selectedDate && r.period===period);
+  document.getElementById('modalWeight').value = rec ? fmtWeightNum(parseFloat(rec.weight)) : '';
+  document.getElementById('modalNote').value = rec?.note || '';
+  document.getElementById('recordModal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('modalWeight').focus(), 100);
+}
+function closeRecordModal(){ document.getElementById('recordModal').style.display = 'none'; }
+async function saveRecord(){
+  const val = parseFloat(document.getElementById('modalWeight').value);
+  if(!val || val<=0){ showToast('请输入有效体重'); return; }
+  const note = document.getElementById('modalNote').value.trim();
+  try{
+    await api('/weights',{method:'POST',body:JSON.stringify({record_date:selectedDate, period:modalPeriod, weight:toKg(val), note})});
+    showToast('保存成功');
+    closeRecordModal();
+    loadMonth();
+  }catch(e){ showToast(e.message); }
+}
+
+// ===== 汇总 =====
+async function loadSummary(){
+  const month = `${curDate.getFullYear()}-${String(curDate.getMonth()+1).padStart(2,'0')}`;
+  try{
+    const s = await api(`/stats/summary?month=${month}`);
+    document.getElementById('sumDays').textContent = s.days;
+    document.getElementById('sumAvg').textContent = s.avg ? fmtWeightNum(s.avg) : '--';
+    const chgEl = document.getElementById('sumChange');
+    if(s.change != null){
+      chgEl.textContent = (s.change>0?'+':'') + fmtWeightNum(Math.abs(s.change)) + (s.change>0?'↑':'↓');
+      chgEl.className = 'v ' + (s.change>0?'up':'down');
+    }else chgEl.textContent = '--';
+    document.getElementById('sumMin').textContent = s.min ? fmtWeightNum(s.min) : '--';
+    document.getElementById('sumMax').textContent = s.max ? fmtWeightNum(s.max) : '--';
+    document.getElementById('sumRecords').textContent = s.records;
+  }catch(e){ console.error(e); }
+}
+
+// ===== 加载月份数据 =====
+async function loadMonth(){
+  const month = `${curDate.getFullYear()}-${String(curDate.getMonth()+1).padStart(2,'0')}`;
+  try{
+    monthRecords = await api(`/weights?month=${month}`);
+  }catch(e){ monthRecords = []; }
+  renderCalendar();
+  renderDayRecords();
+  loadSummary();
+}
+
+document.getElementById('prevMonth').onclick = ()=>{ curDate.setMonth(curDate.getMonth()-1); loadMonth(); };
+document.getElementById('nextMonth').onclick = ()=>{ curDate.setMonth(curDate.getMonth()+1); loadMonth(); };
+document.getElementById('todayBtn').onclick = ()=>{ curDate = new Date(); selectedDate = fmtDate(new Date()); loadMonth(); };
+
+loadMonth();
+</script>
+</body>
+</html>

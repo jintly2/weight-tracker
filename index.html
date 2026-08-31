@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>体重记录 · 登录</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">⚖️</div>
+      <h2>体重记录</h2>
+      <p>轻松记录每一天，遇见更好的自己</p>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-mode="login">登录</button>
+      <button class="auth-tab" data-mode="signup">注册</button>
+    </div>
+    <form id="authForm">
+      <div class="form-group">
+        <input type="text" id="username" placeholder="用户名" required>
+      </div>
+      <div class="form-group">
+        <input type="password" id="password" placeholder="密码（至少6位）" minlength="6" required>
+      </div>
+      <p class="auth-error" id="authError"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="authBtn">登录</button>
+    </form>
+  </div>
+</div>
+<script src="js/common.js"></script>
+<script>
+// 已登录直接跳转
+if(getToken()){ location.href='calendar.html'; }
+
+let mode = 'login';
+document.querySelectorAll('.auth-tab').forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    mode = tab.dataset.mode;
+    document.getElementById('authBtn').textContent = mode==='login'?'登录':'注册';
+    document.getElementById('authError').textContent = '';
+  };
+});
+
+document.getElementById('authForm').onsubmit = async e=>{
+  e.preventDefault();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errEl = document.getElementById('authError');
+  const btn = document.getElementById('authBtn');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = '请稍候…';
+  try{
+    const result = await api(`/auth/${mode}`,{method:'POST',body:JSON.stringify({username,password})});
+    setToken(result.token);
+    setUser(result.user);
+    showToast(mode==='login'?'登录成功':'注册成功');
+    setTimeout(()=>location.href='calendar.html', 500);
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = mode==='login'?'登录':'注册';
+  }
+};
+</script>
+</body>
+</html>

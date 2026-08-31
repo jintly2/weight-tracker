@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>体重记录 · 历史</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="card-title">📋 历史记录</div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<!-- 编辑模态框 -->
+<div class="modal-mask" id="editModal" style="display:none">
+  <div class="modal">
+    <h3>编辑记录</h3>
+    <div class="form-group">
+      <label>体重（<span id="editUnit">kg</span>）</label>
+      <input type="number" id="editWeight" step="0.1">
+    </div>
+    <div class="form-group">
+      <label>备注</label>
+      <input type="text" id="editNote">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeEditModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+if(!requireAuth()) throw new Error('need auth');
+renderTopbar('历史记录');
+renderTabbar('history');
+
+let allRecords = [];
+let editingId = null;
+
+async function loadRecords(){
+  const end = new Date();
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 2); // 加载近2年
+  try{
+    allRecords = await api(`/weights/range?start=${fmtDate(start)}&end=${fmtDate(end)}`);
+    allRecords.sort((a,b)=>{
+      if(a.record_date !== b.record_date) return b.record_date.localeCompare(a.record_date);
+      return a.period === 'morning' ? -1 : 1;
+    });
+  }catch(e){ allRecords = []; }
+  renderList();
+}
+
+function renderList(){
+  const list = document.getElementById('historyList');
+  if(!allRecords.length){
+    list.innerHTML = '<div class="history-empty">暂无记录，去日历页开始打卡吧 📝</div>';
+    return;
+  }
+  // 按日期分组
+  const groups = {};
+  allRecords.forEach(r=>{
+    if(!groups[r.record_date]) groups[r.record_date] = [];
+    groups[r.record_date].push(r);
+  });
+  let html = '';
+  Object.keys(groups).forEach(date=>{
+    const d = new Date(date);
+    const weekday = ['日','一','二','三','四','五','六'][d.getDay()];
+    html += `<div style="padding:10px 0 6px;font-size:13px;font-weight:700;color:var(--text2)">${d.getMonth()+1}月${d.getDate()}日 周${weekday}</div>`;
+    groups[date].forEach(r=>{
+      html += `
+      <div class="history-item">
+        <div class="date">${periodLabel(r.period)}间</div>
+        <div class="period">${r.period==='morning'?'🌅早':'🌙晚'}</div>
+        <div class="weight">${fmtWeight(parseFloat(r.weight))}</div>
+        <div class="actions">
+          <button class="btn btn-sm btn-ghost" onclick="openEdit(${r.id})">编辑</button>
+          <button class="btn btn-sm btn-danger" onclick="delRecord(${r.id})" style="margin-left:4px">删</button>
+        </div>
+      </div>`;
+      if(r.note) html += `<div style="font-size:11px;color:var(--text3);padding:0 0 8px 90px">📝 ${r.note}</div>`;
+    });
+  });
+  list.innerHTML = html;
+}
+
+function openEdit(id){
+  const r = allRecords.find(x=>x.id===id);
+  if(!r) return;
+  editingId = id;
+  document.getElementById('editUnit').textContent = getUnit()==='jin'?'斤':'kg';
+  document.getElementById('editWeight').value = fmtWeightNum(parseFloat(r.weight));
+  document.getElementById('editNote').value = r.note || '';
+  document.getElementById('editModal').style.display = 'flex';
+}
+function closeEditModal(){ document.getElementById('editModal').style.display = 'none'; editingId = null; }
+async function saveEdit(){
+  const val = parseFloat(document.getElementById('editWeight').value);
+  if(!val || val<=0){ showToast('请输入有效体重'); return; }
+  const note = document.getElementById('editNote').value.trim();
+  const r = allRecords.find(x=>x.id===editingId);
+  if(!r) return;
+  try{
+    await api('/weights',{method:'POST',body:JSON.stringify({record_date:r.record_date, period:r.period, weight:toKg(val), note})});
+    showToast('保存成功');
+    closeEditModal();
+    loadRecords();
+  }catch(e){ showToast(e.message); }
+}
+async function delRecord(id){
+  if(!confirm('确定删除这条记录？')) return;
+  try{
+    await api(`/weights/${id}`,{method:'DELETE'});
+    showToast('已删除');
+    loadRecords();
+  }catch(e){ showToast(e.message); }
+}
+
+loadRecords();
+</script>
+</body>
+</html>
